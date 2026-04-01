@@ -6,6 +6,12 @@ function F = qdldl(A, varargin)
 % F = qdldl(A, 'perm', [])         % disable reordering
 % F = qdldl(A, 'logical', true)
 % F = qdldl(A, 'Dsigns', s, 'regularize_eps', eps, 'regularize_delta', delta)
+%
+
+% Copyright (c) 2026 Jason H. Nicholson
+% Copyright (c) Paul Goulart and QDLDL.jl contributors
+% SPDX-License-Identifier: Apache-2.0
+% Ported to MATLAB from QDLDL.jl (https://github.com/osqp/QDLDL.jl)
 
     options = struct();
     options.amd_dense_scale = 1.0;
