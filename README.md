@@ -6,10 +6,17 @@ QDLDL is a factorisation routine for quasi-definite linear systems `Ax = b`. It 
 
 ## Getting Started
 
-Add the `matlab/` folder (and subfolders) to your MATLAB path:
+Run `setupPath` from the repo root to add the `src/` folder to your MATLAB path:
 
 ```matlab
-addpath('matlab')
+setupPath        % add to path
+setupPath(false) % remove from path
+```
+
+Alternatively, add `src/` manually:
+
+```matlab
+addpath('src')
 ```
 
 ## Using QDLDL
@@ -78,7 +85,8 @@ p = positive_inertia(F)
 ## Running Tests
 
 ```matlab
-cd matlab/tests
+setupPath
+cd tests
 run_all_tests
 ```
 
