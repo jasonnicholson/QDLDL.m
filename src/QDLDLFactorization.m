@@ -9,6 +9,8 @@ classdef QDLDLFactorization < handle
         perm
         iperm
         L
+        L_unit   % unit lower triangular: L + I  (for fast MATLAB sparse \)
+        Dinv_vec % Dinv as a plain vector   (avoids spdiags overhead per solve)
         Dinv
         workspace
         logical = false
@@ -32,6 +34,8 @@ classdef QDLDLFactorization < handle
             obj.perm = perm;
             obj.iperm = iperm;
             obj.L = L;
+            obj.L_unit   = L + speye(size(L, 1));
+            obj.Dinv_vec = workspace.Dinv;
             obj.Dinv = Dinv;
             obj.workspace = workspace;
             obj.logical = logicalFlag;
@@ -67,30 +71,26 @@ classdef QDLDLFactorization < handle
                 error('QDLDL:LogicalFactorization', 'Cannot solve with logical factorization only.');
             end
 
-            x = b;
+            % Apply permutation
             if isempty(obj.perm)
-                % No reordering: solve directly in the original variable ordering
-                tmp = x;
+                tmp = b;
             else
-                % Permute rhs into fill-reducing order using the pre-allocated workspace buffer
-                obj.workspace.fwork(:) = x(obj.perm);
-                tmp = obj.workspace.fwork;
+                tmp = b(obj.perm);
             end
 
-            % Solve (P*A*P^T) * tmp = tmp via L*D*L^T back-substitution
-            tmp = QDLDLFactorization.qdldlSolve( ...
-                obj.workspace.Ln, ...
-                obj.workspace.Lp, ...
-                obj.workspace.Li, ...
-                obj.workspace.Lx, ...
-                obj.workspace.Dinv, ...
-                tmp);
+            % L * D * L^T solve using MATLAB sparse triangular backsolve
+            % (much faster than manual scalar loops for large problems)
+            L1 = obj.L_unit;          % unit lower triangular (I + L_strict)
+            tmp = L1 \ tmp;           % forward solve:  L * y = b
+            tmp = tmp .* obj.Dinv_vec; % diagonal scale: y = Dinv .* y
+            tmp = L1' \ tmp;          % backward solve: L' * x = y
 
+            % Inverse permutation
             if isempty(obj.perm)
                 % No reordering: result is already in the original ordering
                 x = tmp;
             else
-                % Scatter permuted solution back to the original variable ordering
+                x = b;             % allocate same size/type
                 x(obj.perm) = tmp;
             end
         end
@@ -181,8 +181,10 @@ classdef QDLDLFactorization < handle
                 obj.workspace.Lp, ...
                 obj.workspace.Li, ...
                 obj.workspace.Lx);
-            % Build a sparse diagonal matrix from the element-wise inverse-D vector
-            obj.Dinv = spdiags(obj.workspace.Dinv, 0, obj.workspace.Ln, obj.workspace.Ln);
+            % Pre-compute unit lower triangular factor (I + L) for fast solve
+            obj.L_unit   = obj.L + speye(obj.workspace.Ln);
+            obj.Dinv_vec = obj.workspace.Dinv;   % plain vector, no spdiags
+            obj.Dinv     = spdiags(obj.workspace.Dinv, 0, obj.workspace.Ln, obj.workspace.Ln);
         end
     end
 
@@ -804,18 +806,9 @@ classdef QDLDLFactorization < handle
                 L = sparse(n, n);
                 return;
             end
-
-            % Expand the compact column pointer array into a per-nonzero column index array
-            cols = zeros(nnzL, 1);
-            for c = 1:n
-                first = Lp(c);
-                last  = Lp(c + 1) - 1;
-                if first <= last
-                    cols(first:last) = c;  % All nonzeros in column c get column label c
-                end
-            end
-
-            % Assemble the MATLAB sparse matrix from (row, col, val) triplets
+            % Vectorised: build column-index vector from CSC pointer differences
+            lens = diff(Lp);   % number of nonzeros per column
+            cols = repelem((1:n)', lens);
             L = sparse(Li, cols, Lx, n, n);
         end
     end
