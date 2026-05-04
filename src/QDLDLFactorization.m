@@ -71,27 +71,27 @@ classdef QDLDLFactorization < handle
                 error('QDLDL:LogicalFactorization', 'Cannot solve with logical factorization only.');
             end
 
-            % Apply permutation
+            % Apply permutation (works for both vector and matrix b)
             if isempty(obj.perm)
                 tmp = b;
             else
-                tmp = b(obj.perm);
+                tmp = b(obj.perm, :);
             end
 
             % L * D * L^T solve using MATLAB sparse triangular backsolve
             % (much faster than manual scalar loops for large problems)
-            L1 = obj.L_unit;          % unit lower triangular (I + L_strict)
-            tmp = L1 \ tmp;           % forward solve:  L * y = b
-            tmp = tmp .* obj.Dinv_vec; % diagonal scale: y = Dinv .* y
-            tmp = L1' \ tmp;          % backward solve: L' * x = y
+            L1 = obj.L_unit;           % unit lower triangular (I + L_strict)
+            tmp = L1 \ tmp;            % forward solve:  L * y = b
+            tmp = tmp .* obj.Dinv_vec; % diagonal scale: y = Dinv .* y (broadcasts)
+            tmp = L1' \ tmp;           % backward solve: L' * x = y
 
             % Inverse permutation
             if isempty(obj.perm)
                 % No reordering: result is already in the original ordering
                 x = tmp;
             else
-                x = b;             % allocate same size/type
-                x(obj.perm) = tmp;
+                x = b;                 % allocate same size/type/shape
+                x(obj.perm, :) = tmp;
             end
         end
 
@@ -231,8 +231,11 @@ classdef QDLDLFactorization < handle
 
             % Determine the fill-reducing column permutation
             if ~isfield(options, 'perm') || (ischar(options.perm) && strcmp(options.perm, 'auto'))
-                % Use symamd approximate minimum-degree ordering by default
-                perm = symamd(A);
+                % Use symamd approximate minimum-degree ordering by default.
+                % symamd only references the strictly lower triangle, but A holds
+                % only the upper triangle here; pass the symmetric pattern so that
+                % the ordering reflects the full sparsity of A.
+                perm = symamd(A + A.');
                 perm = perm(:);
             elseif isempty(options.perm)
                 % No reordering requested
